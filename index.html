@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battleship vs AI</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <h1 class="hero__title">Battleship vs AI</h1>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+    </header>
+
+    <section id="difficulty-screen" class="panel panel--screen">
+      <h2 class="screen-title">Choose a difficulty</h2>
+      <p class="screen-copy">
+        Sink the enemy fleet before the computer sinks yours.
+        Place all five ships, then start the battle.
+        Hits, misses, sinks, and score all carry across the round.
+      </p>
+      <div class="difficulty-actions">
+        <button id="diff-easy" class="btn btn--primary btn--difficulty" data-difficulty="easy">
+          Easy
+          <span>Random shots</span>
+        </button>
+        <button id="diff-normal" class="btn btn--primary btn--difficulty" data-difficulty="normal">
+          Normal
+          <span>Hunt and target</span>
+        </button>
+      </div>
+    </section>
+
+    <main id="game-screen" class="game-screen" hidden>
+      <section class="board-panel board-panel--human">
+        <h2 class="panel-title">Your fleet</h2>
+        <div id="human-board" class="board-host"></div>
+      </section>
+
+      <aside id="dock" class="dock" aria-label="Ship placement controls"></aside>
+
+      <section class="board-panel board-panel--ai">
+        <h2 class="panel-title">Enemy waters</h2>
+        <div id="ai-board" class="board-host"></div>
+      </section>
+    </main>
+
+    <div id="overlay" class="overlay" hidden>
+      <div class="overlay__card">
+        <h2 id="overlay-title" class="overlay__title"></h2>
+        <p id="overlay-text" class="overlay__text"></p>
+        <div class="overlay__actions">
+          <button id="overlay-play-again" class="btn btn--primary">Play Again</button>
+          <button id="overlay-new-game" class="btn btn--secondary">New Game</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__spacer"></div>
+      <div class="footer__controls">
+        <div id="scoreboard" class="scoreboard" aria-label="Scoreboard">
+          <span>Wins: <strong id="wins">0</strong></span>
+          <span>Losses: <strong id="losses">0</strong></span>
+        </div>
+        <button id="mute-btn" class="btn btn--secondary mute-btn" type="button" aria-pressed="false" aria-label="Mute sound">🔊</button>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
