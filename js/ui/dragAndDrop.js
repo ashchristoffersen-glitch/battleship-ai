@@ -2,9 +2,154 @@ import { FLEET } from '../game/gameController.js';
 import { show as showMessage } from './messageDisplay.js';
 
 const DRAG_THRESHOLD = 10;
+let activeDrag = null;
 
 export function exceedsDragThreshold(dx, dy, threshold = DRAG_THRESHOLD) {
   return Math.hypot(dx, dy) > threshold;
+}
+
+function renderShipPiece(piece, ship) {
+  if (!piece) return;
+  piece.classList.toggle('vertical', ship.vertical);
+  piece.innerHTML = '';
+
+  for (let index = 0; index < ship.length; index += 1) {
+    const segment = document.createElement('div');
+    segment.className = 'ship-segment';
+    piece.appendChild(segment);
+  }
+
+  const label = document.createElement('span');
+  label.className = 'ship-piece-label';
+  label.textContent = ship.name;
+  piece.appendChild(label);
+}
+
+function clearHighlights(boardEl) {
+  boardEl?.querySelectorAll('.drop-preview').forEach((cell) => cell.classList.remove('drop-preview'));
+}
+
+function highlightDropTarget(boardEl, pointerX, pointerY, length, vertical) {
+  clearHighlights(boardEl);
+  const target = document.elementFromPoint(pointerX, pointerY)?.closest?.('.cell');
+  if (!target || !target.closest('#human-board')) return;
+  const row = Number(target.dataset.row);
+  const col = Number(target.dataset.col);
+
+  for (let index = 0; index < length; index += 1) {
+    const cellRow = vertical ? row + index : row;
+    const cellCol = vertical ? col : col + index;
+    const cell = boardEl.querySelector(`.cell[data-row="${cellRow}"][data-col="${cellCol}"]`);
+    cell?.classList.add('drop-preview');
+  }
+}
+
+function removeOrphanedDragClones() {
+  if (typeof document === 'undefined') return;
+  document.querySelectorAll('.ship-piece--dragging').forEach((node) => node.remove());
+}
+
+function detachDragListeners() {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener('pointermove', handleWindowPointerMove, true);
+  window.removeEventListener('pointerup', handleWindowPointerUp, true);
+  window.removeEventListener('pointercancel', handleWindowPointerCancel, true);
+  window.removeEventListener('blur', handleWindowBlur, true);
+}
+
+function cleanupActiveDrag() {
+  if (activeDrag?.clone?.isConnected) {
+    activeDrag.clone.remove();
+  }
+  if (activeDrag) {
+    clearHighlights(activeDrag.boardEl);
+  }
+  activeDrag = null;
+  detachDragListeners();
+  removeOrphanedDragClones();
+}
+
+function attachDragListeners() {
+  if (typeof window === 'undefined') return;
+  window.addEventListener('pointermove', handleWindowPointerMove, true);
+  window.addEventListener('pointerup', handleWindowPointerUp, true);
+  window.addEventListener('pointercancel', handleWindowPointerCancel, true);
+  window.addEventListener('blur', handleWindowBlur, true);
+}
+
+function handleWindowPointerMove(event) {
+  const drag = activeDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+
+  drag.lastX = event.clientX;
+  drag.lastY = event.clientY;
+
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  if (!drag.dragging && !exceedsDragThreshold(dx, dy)) return;
+
+  if (!drag.dragging) {
+    drag.dragging = true;
+    removeOrphanedDragClones();
+    drag.clone = drag.piece.cloneNode(true);
+    drag.clone.classList.add('ship-piece--dragging');
+    drag.clone.style.position = 'fixed';
+    drag.clone.style.pointerEvents = 'none';
+    drag.clone.style.left = `${event.clientX - 20}px`;
+    drag.clone.style.top = `${event.clientY - 20}px`;
+    drag.clone.style.zIndex = '1000';
+    document.body.appendChild(drag.clone);
+  }
+
+  event.preventDefault();
+  if (drag.clone) {
+    drag.clone.style.left = `${event.clientX - 20}px`;
+    drag.clone.style.top = `${event.clientY - 20}px`;
+  }
+  highlightDropTarget(drag.boardEl, event.clientX, event.clientY, drag.ship.length, drag.ship.vertical);
+}
+
+function finishDrag(event) {
+  const drag = activeDrag;
+  if (!drag || event.pointerId !== drag.pointerId) return;
+
+  const wasDragging = drag.dragging;
+  const releaseX = event.clientX;
+  const releaseY = event.clientY;
+  const piece = drag.piece;
+  const ship = drag.ship;
+  const commitDrop = drag.commitDrop;
+
+  cleanupActiveDrag();
+
+  if (!wasDragging) {
+    ship.vertical = !ship.vertical;
+    renderShipPiece(piece, ship);
+    return;
+  }
+
+  const target = document.elementFromPoint(releaseX, releaseY)?.closest?.('.cell');
+  if (!target || !target.closest('#human-board')) {
+    showMessage('That ship snapped back.', 'info', 1200);
+    return;
+  }
+
+  const row = Number(target.dataset.row);
+  const col = Number(target.dataset.col);
+  commitDrop?.(row, col);
+}
+
+function handleWindowPointerUp(event) {
+  finishDrag(event);
+}
+
+function handleWindowPointerCancel(event) {
+  if (!activeDrag || event.pointerId !== activeDrag.pointerId) return;
+  cleanupActiveDrag();
+}
+
+function handleWindowBlur() {
+  cleanupActiveDrag();
 }
 
 export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } = {}) {
@@ -19,6 +164,7 @@ export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } =
   updateDockControls();
 
   function renderDock() {
+    cleanupActiveDrag();
     dockEl.innerHTML = '';
 
     const heading = document.createElement('h2');
@@ -94,97 +240,25 @@ export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } =
     piece.setAttribute('aria-label', `${ship.name}, length ${ship.length}`);
     renderShipPiece(piece, ship);
 
-    let drag = null;
-
-    const startPointer = (event) => {
-      if (ship.placed) return;
-      piece.setPointerCapture?.(event.pointerId);
-      drag = {
+    piece.addEventListener('pointerdown', (event) => {
+      if (ship.placed || event.button !== 0) return;
+      cleanupActiveDrag();
+      removeOrphanedDragClones();
+      activeDrag = {
         pointerId: event.pointerId,
-        type: event.pointerType,
         startX: event.clientX,
         startY: event.clientY,
-        pointerX: event.clientX,
-        pointerY: event.clientY,
         dragging: false,
         clone: null,
+        piece,
+        ship,
+        boardEl,
+        commitDrop: (row, col) => attemptPlace(ship, row, col),
       };
+      attachDragListeners();
       event.preventDefault();
-    };
+    });
 
-    const movePointer = (event) => {
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      drag.pointerX = event.clientX;
-      drag.pointerY = event.clientY;
-      const dx = event.clientX - drag.startX;
-      const dy = event.clientY - drag.startY;
-
-      if (!drag.dragging && !exceedsDragThreshold(dx, dy)) {
-        return;
-      }
-
-      if (!drag.dragging) {
-        drag.dragging = true;
-        drag.clone = piece.cloneNode(true);
-        drag.clone.classList.add('ship-piece--dragging');
-        drag.clone.style.position = 'fixed';
-        drag.clone.style.pointerEvents = 'none';
-        drag.clone.style.left = `${event.clientX - 20}px`;
-        drag.clone.style.top = `${event.clientY - 20}px`;
-        drag.clone.style.zIndex = '1000';
-        document.body.appendChild(drag.clone);
-      }
-
-      event.preventDefault();
-      if (drag.clone) {
-        drag.clone.style.left = `${event.clientX - 20}px`;
-        drag.clone.style.top = `${event.clientY - 20}px`;
-      }
-      highlightDropTarget(event.clientX, event.clientY, ship.length, ship.vertical);
-    };
-
-    const endPointer = (event) => {
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      piece.releasePointerCapture?.(event.pointerId);
-
-      const wasDragging = drag.dragging;
-      clearDragVisuals();
-
-      if (!wasDragging) {
-        ship.vertical = !ship.vertical;
-        renderShipPiece(piece, ship);
-        return;
-      }
-
-      const target = document.elementFromPoint(event.clientX, event.clientY);
-      const cell = target?.closest?.('.cell');
-      if (!cell || !cell.closest('#human-board')) {
-        showMessage('That ship snapped back.', 'info', 1200);
-        return;
-      }
-
-      const row = Number(cell.dataset.row);
-      const col = Number(cell.dataset.col);
-      attemptPlace(ship, row, col);
-    };
-
-    const cancelPointer = () => {
-      clearDragVisuals();
-      drag = null;
-    };
-
-    function clearDragVisuals() {
-      clearHighlights();
-      if (drag?.clone?.isConnected) {
-        drag.clone.remove();
-      }
-      drag = null;
-    }
-
-    piece.addEventListener('pointerdown', startPointer);
-    piece.addEventListener('pointermove', movePointer);
-    piece.addEventListener('pointerup', endPointer);
-    piece.addEventListener('pointercancel', cancelPointer);
     piece.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -210,6 +284,7 @@ export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } =
   }
 
   function randomizeAll() {
+    cleanupActiveDrag();
     board.reset();
     state.forEach((ship) => {
       ship.placed = false;
@@ -232,22 +307,6 @@ export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } =
     showMessage('Fleet randomized. Start the battle when ready.', 'success', 1800);
   }
 
-  function renderShipPiece(piece, ship) {
-    piece.classList.toggle('vertical', ship.vertical);
-    piece.innerHTML = '';
-
-    for (let index = 0; index < ship.length; index += 1) {
-      const segment = document.createElement('div');
-      segment.className = 'ship-segment';
-      piece.appendChild(segment);
-    }
-
-    const label = document.createElement('span');
-    label.className = 'ship-piece-label';
-    label.textContent = ship.name;
-    piece.appendChild(label);
-  }
-
   function renderBoardPlacement(row, col, length, vertical) {
     for (let index = 0; index < length; index += 1) {
       const cellRow = vertical ? row + index : row;
@@ -255,25 +314,6 @@ export function initPlacement(board, boardEl, dockEl, { onComplete, onChange } =
       const cell = boardEl.querySelector(`.cell[data-row="${cellRow}"][data-col="${cellCol}"]`);
       cell?.classList.add('ship');
     }
-  }
-
-  function highlightDropTarget(pointerX, pointerY, length, vertical) {
-    clearHighlights();
-    const target = document.elementFromPoint(pointerX, pointerY)?.closest?.('.cell');
-    if (!target || !target.closest('#human-board')) return;
-    const row = Number(target.dataset.row);
-    const col = Number(target.dataset.col);
-
-    for (let index = 0; index < length; index += 1) {
-      const cellRow = vertical ? row + index : row;
-      const cellCol = vertical ? col : col + index;
-      const cell = boardEl.querySelector(`.cell[data-row="${cellRow}"][data-col="${cellCol}"]`);
-      cell?.classList.add('drop-preview');
-    }
-  }
-
-  function clearHighlights() {
-    boardEl.querySelectorAll('.drop-preview').forEach((cell) => cell.classList.remove('drop-preview'));
   }
 
   function flashInvalid(row, col, length, vertical) {
