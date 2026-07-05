@@ -101,6 +101,9 @@ body.is-defeat::before {
   padding: 1.25rem;
   margin: 0 auto 1rem;
   width: min(920px, 100%);
+  text-align: center;
+  display: grid;
+  justify-items: center;
 }
 
 .screen-copy {
@@ -158,15 +161,30 @@ body.is-defeat::before {
 }
 
 .game-screen {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(1.25rem, 2.5vw, 2.5rem);
+  width: min(100%, 90rem);
+  margin-inline: auto;
 }
 
 .board-panel,
 .dock {
   padding: 0.9rem;
+}
+
+.board-panel {
+  width: min(100%, var(--board-width));
+}
+
+.board-panel--human {
+  order: 1;
+}
+
+.board-panel--ai {
+  order: 2;
 }
 
 .panel-title,
@@ -178,6 +196,7 @@ body.is-defeat::before {
 .board-host {
   display: grid;
   justify-items: center;
+  width: 100%;
 }
 
 .board-wrap {
@@ -328,10 +347,13 @@ body.is-defeat::before {
 }
 
 .dock {
-  position: sticky;
-  top: 0.75rem;
+  order: 3;
+  flex: 1 0 100%;
   display: grid;
   gap: 0.75rem;
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto;
 }
 
 .dock-hint {
@@ -592,15 +614,7 @@ body.is-defeat::before {
   100% { filter: none; }
 }
 
-@media (max-width: 1100px) {
-  .game-screen {
-    grid-template-columns: 1fr;
-  }
 
-  .dock {
-    position: static;
-  }
-}
 
 @media (max-width: 720px) {
   :root {
